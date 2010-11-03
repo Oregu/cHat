@@ -1,0 +1,6 @@
+Simple chat server and client.
+Client written with gtk2hs.
+
+For now server just outputs string to client.
+And client does nothing, just "Hello world button".
+
