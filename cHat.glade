@@ -3,6 +3,8 @@
   <!-- interface-requires gtk+ 2.16 -->
   <!-- interface-naming-policy project-wide -->
   <widget class="GtkWindow" id="chatWindow">
+    <property name="width_request">640</property>
+    <property name="height_request">480</property>
     <property name="title" translatable="yes">cHat client</property>
     <child>
       <widget class="GtkVBox" id="vbox">
@@ -50,11 +52,13 @@
                 <property name="receives_default">True</property>
               </widget>
               <packing>
+                <property name="expand">False</property>
                 <property name="position">1</property>
               </packing>
             </child>
           </widget>
           <packing>
+            <property name="expand">False</property>
             <property name="position">1</property>
           </packing>
         </child>
