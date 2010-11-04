@@ -21,7 +21,8 @@ acceptLoop servSock = do
 processClient :: (Handle, HostName, PortNumber) -> IO ()
 processClient (handle, host, port) = do
 	putStrLn $ "(" ++ show host ++ ":" ++ show port ++ ") new client"
-	hPutStrLn handle "Hello, Client!"
+	clStr <- hGetLine handle
+	hPutStrLn handle $ "Hello, Client!\nYou said: " ++ clStr
 	hFlush handle
-	threadDelay 10000000
 	hClose handle
+
