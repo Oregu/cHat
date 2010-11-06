@@ -5,6 +5,7 @@ import Graphics.UI.Gtk.Glade
 import Network
 import System.IO
 import Monad
+import Control.Concurrent
 
 port = PortNumber 14003
 host = "localhost"
@@ -22,27 +23,34 @@ createGUI = do
 	messagesView <- xmlGetWidget xml castToTextView "messagesView"
 	messageEntry <- xmlGetWidget xml castToEntry "messageEntry"
 	serverConn <- connect
-	onClicked sendButton $ sendClicked serverConn messageEntry messagesView
+	hSetBuffering serverConn LineBuffering
+	forkIO $ listenServer serverConn messagesView
+	onClicked sendButton $ sendClicked serverConn messageEntry
 	window   <- xmlGetWidget xml castToWindow "chatWindow"
 	onDestroy window $ hClose serverConn >> mainQuit
 	return window
 
-sendClicked :: Handle -> Entry -> TextView -> IO ()
-sendClicked conn entry tv = do
+listenServer :: Handle -> TextView -> IO ()
+listenServer sock tv = do
+	putStrLn "Waiting for server"
+	msgs <- liftM (++ "\n") $ hGetLine sock
+	putStrLn $ "readed " ++ msgs ++ " from socket"
+	if (null msgs)
+		then listenServer sock tv
+		else do
+			tb <- textViewGetBuffer tv
+			endIter <- textBufferGetEndIter tb
+			textBufferInsert tb endIter msgs
+			listenServer sock tv
+
+sendClicked :: Handle -> Entry -> IO ()
+sendClicked conn entry = do
 	text <- get entry entryText
-	unless (null text) $ do
-		msgs <- sendToServer conn text
-		tb <- textViewGetBuffer tv
-		endIter <- textBufferGetEndIter tb
-		textBufferInsert tb endIter msgs
+	unless (null text) $ sendToServer conn text
 
 connect :: IO Handle
 connect = connectTo host port
 
-sendToServer :: Handle -> String -> IO String
-sendToServer h text = do
-	hSetBuffering h LineBuffering
-	hPutStrLn h text 
-	msgs <- hGetLine h
-	return $ msgs ++ "\n"
+sendToServer :: Handle -> String -> IO ()
+sendToServer h text = hPutStrLn h text >> hFlush h 
 
