@@ -18,7 +18,7 @@ main = withSocketsDo $ do
 	dispatchProc servSock chan []
 
 data Client = Client Handle
-data Command = Connect Client | Msg String
+data Command = Connect Client | Msg String | Disconnect Handle
 
 acceptLoop :: Socket -> Chan Command -> IO ()
 acceptLoop servSock chan = do
@@ -49,6 +49,10 @@ dispatchProc sock chan cls = do
 			mapM_ (send str) cls
 			putStrLn "Sent to others"
 			dispatchProc sock chan cls
+		(Disconnect dh) -> do
+			let cls' = filter (\(Client h) -> dh == h) cls
+			putStrLn "Client disconnected!"
+			dispatchProc sock chan cls'
 
 send :: String -> Client -> IO ()
 send msg (Client h) = hPutStrLn h msg >> hFlush h
