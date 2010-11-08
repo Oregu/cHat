@@ -12,6 +12,7 @@ host = "localhost"
 
 main = do
 	initGUI
+	timeoutAddFull (yield >> return True) priorityDefaultIdle 50
 	window <- createGUI
 	widgetShowAll window
 	mainGUI
@@ -32,9 +33,7 @@ createGUI = do
 
 listenServer :: Handle -> TextView -> IO ()
 listenServer sock tv = do
-	putStrLn "Waiting for server"
 	msgs <- liftM (++ "\n") $ hGetLine sock
-	putStrLn $ "readed " ++ msgs ++ " from socket"
 	if (null msgs)
 		then listenServer sock tv
 		else do

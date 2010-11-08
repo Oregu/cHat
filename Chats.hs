@@ -42,12 +42,9 @@ dispatchProc sock chan cls = do
 			let cls' = cl:cls
 			putStrLn $ "Total " ++ (show $ length cls') ++ " clients"
 			mapM_ (send "Client connected!") cls'
-			putStrLn "Sent messages to clients"
 			dispatchProc sock chan cls'
 		(Msg str) -> do
-			putStrLn "Got messages from client"
 			mapM_ (send str) cls
-			putStrLn "Sent to others"
 			dispatchProc sock chan cls
 		(Disconnect dh) -> do
 			let cls' = filter (\(Client h) -> dh == h) cls
