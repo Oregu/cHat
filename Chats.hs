@@ -4,7 +4,7 @@ import Prelude hiding (catch)
 
 import System.IO
 import Network
-import Control.Exception (finally, catch)
+import Control.OldException (finally, catch)
 import Control.Concurrent
 import Monad
 
@@ -17,40 +17,49 @@ main = withSocketsDo $ do
 	forkIO $ acceptLoop servSock chan `finally` sClose servSock
 	dispatchProc servSock chan []
 
-data Client = Client Handle
-data Command = Connect Client | Msg String | Disconnect Handle
+type Nick = String
+type From = String
+data Client = Client Handle Nick
+data Command = Connect Client | Msg From String | Disconnect Client
 
 acceptLoop :: Socket -> Chan Command -> IO ()
 acceptLoop servSock chan = do
 	(handle, server, port) <- accept servSock
-	putStrLn $ "(" ++ show server ++ ":" ++ show port ++ ") new client"
 	hSetBuffering handle NoBuffering
-	let client = Client handle
-	forkIO $ processClient client chan
+	let client = Client handle (show port)
+	forkIO $ (processClient client chan) `catch` (\_ -> writeChan chan $ Disconnect client)
 	writeChan chan $ Connect client
 	acceptLoop servSock chan
 
 processClient :: Client -> Chan Command -> IO ()
-processClient c@(Client handle) chan =
-	liftM Msg (hGetLine handle) >>= writeChan chan >> processClient c chan
+processClient c@(Client h n) chan =
+	liftM (Msg n) (hGetLine h) >>= writeChan chan >> processClient c chan
 
 dispatchProc :: Socket -> Chan Command -> [Client] -> IO ()
 dispatchProc sock chan cls = do
 	cmd <- readChan chan
 	case cmd of
-		(Connect cl) -> do
+		(Connect cl@(Client _ nick)) -> do
 			let cls' = cl:cls
 			putStrLn $ "Total " ++ (show $ length cls') ++ " clients"
-			mapM_ (send "Client connected!") cls'
+			broadcastFrom nick "Client connected!" cls'
 			dispatchProc sock chan cls'
-		(Msg str) -> do
-			mapM_ (send str) cls
+		(Msg who str) -> do
+			broadcastFrom who str cls
 			dispatchProc sock chan cls
-		(Disconnect dh) -> do
-			let cls' = filter (\(Client h) -> dh == h) cls
+		(Disconnect (Client dh nick)) -> do
+			hClose dh
+			let cls' = filter (\(Client h _) -> dh /= h) cls
 			putStrLn "Client disconnected!"
+			broadcastFrom nick "Client disconnected!" cls'
 			dispatchProc sock chan cls'
 
+broadcastFrom :: From -> String -> [Client] -> IO ()
+broadcastFrom from msg = broadcast $ from ++ " >> " ++ msg
+
+broadcast :: String -> [Client] -> IO ()
+broadcast msg = mapM_ $ send msg
+
 send :: String -> Client -> IO ()
-send msg (Client h) = hPutStrLn h msg >> hFlush h
+send msg (Client h n) = (hPutStrLn h msg >> hFlush h) `catch` (\e -> putStrLn $ show e)
 
