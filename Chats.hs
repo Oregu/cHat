@@ -7,7 +7,7 @@ import Network
 import Control.OldException (finally, catch)
 import Control.Concurrent
 import Monad
-
+import Data.List (isPrefixOf)
 portn = 14003
 
 main = withSocketsDo $ do
@@ -20,7 +20,7 @@ main = withSocketsDo $ do
 type Nick = String
 type From = String
 data Client = Client Handle Nick
-data Command = Connect Client | Msg From String | Disconnect Client
+data Command = Connect Client | Nick Client String | Msg Client String | Disconnect Client
 
 acceptLoop :: Socket -> Chan Command -> IO ()
 acceptLoop servSock chan = do
@@ -33,7 +33,10 @@ acceptLoop servSock chan = do
 
 processClient :: Client -> Chan Command -> IO ()
 processClient c@(Client h n) chan =
-	liftM (Msg n) (hGetLine h) >>= writeChan chan >> processClient c chan
+	liftM (getCommand c) (hGetLine h) >>= writeChan chan >> processClient c chan
+
+getCommand :: Client -> String -> Command
+getCommand c s = if ("NICK " `isPrefixOf` s) then Nick c $ drop 5 s else Msg c s
 
 dispatchProc :: Socket -> Chan Command -> [Client] -> IO ()
 dispatchProc sock chan cls = do
@@ -44,7 +47,10 @@ dispatchProc sock chan cls = do
 			putStrLn $ "Total " ++ (show $ length cls') ++ " clients"
 			broadcastFrom nick "Client connected!" cls'
 			dispatchProc sock chan cls'
-		(Msg who str) -> do
+		(Nick cl@(Client hn _) n) -> do
+			let cls' = map (\c@(Client h _) -> if hn == h then Client h n else c) cls
+			dispatchProc sock chan cls'
+		(Msg (Client _ who) str) -> do
 			broadcastFrom who str cls
 			dispatchProc sock chan cls
 		(Disconnect (Client dh nick)) -> do
