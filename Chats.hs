@@ -8,6 +8,8 @@ import Control.OldException (finally, catch)
 import Control.Concurrent
 import Monad
 import Data.List (isPrefixOf)
+import Maybe (fromJust)
+
 portn = 14003
 
 main = withSocketsDo $ do
@@ -20,23 +22,23 @@ main = withSocketsDo $ do
 type Nick = String
 type From = String
 data Client = Client Handle Nick
-data Command = Connect Client | Nick Client String | Msg Client String | Disconnect Client
+data Command = Connect Client | Nick Handle String | Msg Handle String | Disconnect Client
 
 acceptLoop :: Socket -> Chan Command -> IO ()
 acceptLoop servSock chan = do
 	(handle, server, port) <- accept servSock
 	hSetBuffering handle NoBuffering
 	let client = Client handle (show port)
-	forkIO $ (processClient client chan) `catch` (\_ -> writeChan chan $ Disconnect client)
+	forkIO $ (processConn handle chan) `catch` (\_ -> writeChan chan $ Disconnect client)
 	writeChan chan $ Connect client
 	acceptLoop servSock chan
 
-processClient :: Client -> Chan Command -> IO ()
-processClient c@(Client h n) chan =
-	liftM (getCommand c) (hGetLine h) >>= writeChan chan >> processClient c chan
+processConn :: Handle -> Chan Command -> IO ()
+processConn h chan =
+	liftM (getCommand h) (hGetLine h) >>= writeChan chan >> processConn h chan
 
-getCommand :: Client -> String -> Command
-getCommand c s = if ("NICK " `isPrefixOf` s) then Nick c $ drop 5 s else Msg c s
+getCommand :: Handle -> String -> Command
+getCommand h s = if ("NICK " `isPrefixOf` s) then Nick h $ drop 5 s else Msg h s
 
 dispatchProc :: Socket -> Chan Command -> [Client] -> IO ()
 dispatchProc sock chan cls = do
@@ -47,10 +49,11 @@ dispatchProc sock chan cls = do
 			putStrLn $ "Total " ++ (show $ length cls') ++ " clients"
 			broadcastFrom nick "Client connected!" cls'
 			dispatchProc sock chan cls'
-		(Nick cl@(Client hn _) n) -> do
+		(Nick hn n) -> do
 			let cls' = map (\c@(Client h _) -> if hn == h then Client h n else c) cls
 			dispatchProc sock chan cls'
-		(Msg (Client _ who) str) -> do
+		(Msg hm str) -> do
+			let who = fromJust $ getNick hm cls
 			broadcastFrom who str cls
 			dispatchProc sock chan cls
 		(Disconnect (Client dh nick)) -> do
@@ -59,6 +62,9 @@ dispatchProc sock chan cls = do
 			putStrLn "Client disconnected!"
 			broadcastFrom nick "Client disconnected!" cls'
 			dispatchProc sock chan cls'
+
+getNick h ((Client ch n):cs) = if ch == h then Just n else getNick h cs
+getNick _ [] = Nothing
 
 broadcastFrom :: From -> String -> [Client] -> IO ()
 broadcastFrom from msg = broadcast $ from ++ " >> " ++ msg
